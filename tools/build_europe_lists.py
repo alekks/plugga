@@ -131,7 +131,7 @@ def main(src):
         ("28", "Litauen", "LTU", [23.9, 55.4], [], "h", "Vilnius", [25.28, 54.69], []),
         ("29", "Storbritannien", "GBR", [-1.8, 52.6], ["Förenade kungariket", "UK"], "i", "London", [-0.13, 51.51], []),
         ("30", "Irland", "IRL", [-8.0, 53.2], [], "j", "Dublin", [-6.26, 53.35], []),
-        ("31", "Nederländerna", "NLD", [5.7, 52.4], ["Holland"], "k", "Amsterdam", [4.9, 52.37], []),
+        ("31", "Nederländerna", "NLD", [5.7, 52.4], ["Holland"], "k", "Amsterdam", [4.9, 52.37], ["Haag", "Den Haag"]),
         ("32", "Belgien", "BEL", [4.6, 50.6], [], "l", "Bryssel", [4.35, 50.85], ["Bruxelles", "Brussel"]),
         ("33", "Frankrike", "FRA", [2.5, 46.7], [], "m", "Paris", [2.35, 48.86], []),
         ("34", "Tyskland", "DEU", [10.2, 51.0], [], "n", "Berlin", [13.4, 52.52], []),
@@ -203,7 +203,7 @@ def main(src):
         ("5", "Pyrenéerna", [], [0.6, 42.7], regions["PYRENEES"]),
         ("6", "Apenninerna", [], [13.3, 42.4], regions["APPENNINI"]),
         ("7", "Dinariska alperna", ["Dinarida alperna", "Dinariska bergen"], [17.6, 43.9], regions["Dinaric Alps"]),
-        ("8", "Balkanbergen", ["Balkan"], [25.0, 42.8], regions["Balkan Mts."]),
+        ("8", "Balkanbergen", ["Balkan"], [23.0, 42.95], regions["Balkan Mts."]),
         ("9", "Karpaterna", [], [24.5, 47.9], karpaterna),
         ("10", "Kaukasus", ["Kaukasusbergen"], [44.5, 42.5], regions["CAUCASUS MTS."]),
     ]
