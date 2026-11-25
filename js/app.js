@@ -160,9 +160,8 @@
         (saved.indexOf(g.id) >= 0 ? " checked" : "") + "> " + P.esc(g.title) + ' <span class="muted">(' + n + ")</span></label>";
     });
     html += "</div>";
-    html += '<label class="check' + (weak.length ? "" : " disabled") + '"><input type="checkbox" name="weak"' +
-      (weak.length ? "" : " disabled") + "> Bara det jag behöver träna mer på " +
-      '<span class="muted">(' + weak.length + " st)</span></label>";
+    html += '<label class="check" id="weak-label"><input type="checkbox" name="weak"> Bara det jag behöver träna mer på ' +
+      '<span class="muted" id="weak-count"></span></label>';
     html += '<label class="check"><input type="checkbox" name="mix"> Blanda numren (inte samma som på provpappret)</label>';
     html += '<div class="radius"><span>Svårighet för "Hitta på kartan":</span> ';
     RADII.forEach(function (o) {
@@ -178,16 +177,33 @@
     });
     html += "</div>";
 
-    if (weak.length) {
-      html += '<div class="card weak-box"><h3>Behöver träna mer på</h3>' + weakChips(weak) + "</div>";
-    }
+    html += '<div class="card weak-box" id="weak-box"></div>';
     main.innerHTML = html;
+
+    function checkedGroups() {
+      return $all('input[name="g"]:checked').map(function (c) { return c.value; });
+    }
+    // "Behöver träna mer på" visar bara det som ingår i de valda grupperna
+    function updateWeak() {
+      var gs = checkedGroups();
+      var w = weak.filter(function (x) { return gs.indexOf(x.item.group) >= 0; });
+      var cb = $('input[name="weak"]');
+      if (!w.length) cb.checked = false;
+      cb.disabled = !w.length;
+      $("#weak-label").classList.toggle("disabled", !w.length);
+      $("#weak-count").textContent = "(" + w.length + " st)";
+      var box = $("#weak-box");
+      box.style.display = w.length ? "" : "none";
+      box.innerHTML = w.length ? "<h3>Behöver träna mer på</h3>" + weakChips(w) : "";
+    }
+    $all('input[name="g"]').forEach(function (c) { c.onchange = updateWeak; });
+    updateWeak();
 
     $all(".mode-card").forEach(function (b) {
       b.onclick = function () {
-        var gs = $all('input[name="g"]:checked').map(function (c) { return c.value; });
+        var gs = checkedGroups();
         var w = $('input[name="weak"]').checked;
-        if (!gs.length && !w) { alert("Välj minst en sak att öva på."); return; }
+        if (!gs.length) { alert("Välj minst en sak att öva på."); return; }
         var r = +$('input[name="r"]:checked').value;
         P.store.pref("groups:" + id, gs);
         P.store.pref("radius", r);
@@ -210,13 +226,16 @@
   /* ---------- gemensamt för övningarna ---------- */
   function selectItems(list, q) {
     var groups = (q.g || "").split(",").filter(Boolean);
+    var inGroups = function (it) { return !groups.length || groups.indexOf(it.group) >= 0; };
     var items;
-    if (q.weak) {
-      var w = weakItems(list).map(function (x) { return x.item; });
-      items = groups.length && !q.all ? w.filter(function (it) { return groups.indexOf(it.group) >= 0; }) : w;
-      if (!items.length) items = w;
+    if (q.ids) {
+      // Exakt de här platserna (t.ex. "Öva på det jag hade fel")
+      var ids = q.ids.split(",");
+      items = list.items.filter(function (it) { return ids.indexOf(it.id) >= 0; });
+    } else if (q.weak) {
+      items = weakItems(list).map(function (x) { return x.item; }).filter(inGroups);
     } else {
-      items = list.items.filter(function (it) { return !groups.length || groups.indexOf(it.group) >= 0; });
+      items = list.items.filter(inGroups);
     }
     items = items.map(function (it) { return Object.assign({}, it, { show: it.label }); });
     if (q.mix) {
@@ -272,7 +291,8 @@
     }
     html += '<div class="row wrap"><a class="btn primary" href="' + again + "&t=" + Date.now() + '">Kör igen</a>';
     if (wrong.length) {
-      html += '<a class="btn" href="#/ova/' + encodeURIComponent(list.id) + "/" + mode + "?weak=1&r=" + (q.r || 120) + "&t=" + Date.now() + '">Öva på det jag hade fel</a>';
+      html += '<a class="btn" href="#/ova/' + encodeURIComponent(list.id) + "/" + mode + "?ids=" +
+        encodeURIComponent(wrongIds.join(",")) + "&r=" + (q.r || 120) + (q.mix ? "&mix=1" : "") + "&t=" + Date.now() + '">Öva på det jag hade fel</a>';
     }
     html += '<a class="btn ghost" href="#/lista/' + encodeURIComponent(list.id) + '">Välj annat</a></div></div>';
     return html;
