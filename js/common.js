@@ -192,6 +192,53 @@
     return { km: P.haversine(p, bestPt), nearest: bestPt };
   };
 
+  /* ---------- Vilket land ligger en punkt i? (för städer) ---------- */
+  var countryIdx = null;
+  function countryIndex(base) {
+    if (countryIdx && countryIdx.base === base) return countryIdx;
+    countryIdx = {
+      base: base,
+      list: base.countries.features.map(function (f) { return { f: f, b: d3.geoBounds(f) }; }),
+    };
+    return countryIdx;
+  }
+  function inBounds(b, p) {
+    if (p[1] < b[0][1] - 0.01 || p[1] > b[1][1] + 0.01) return false;
+    if (b[0][0] <= b[1][0]) return p[0] >= b[0][0] - 0.01 && p[0] <= b[1][0] + 0.01;
+    return p[0] >= b[0][0] || p[0] <= b[1][0]; // landet korsar datumlinjen
+  }
+  /** Landet (feature i grundkartan) som punkten ligger i, eller null (hav). */
+  P.countryAt = function (base, p) {
+    var idx = countryIndex(base);
+    for (var i = 0; i < idx.list.length; i++) {
+      var c = idx.list[i];
+      if (inBounds(c.b, p) && d3.geoContains(c.f, p)) return c.f;
+    }
+    return null;
+  };
+  /**
+   * Landet en stad ligger i. Städer vid kusten kan hamna precis utanför den
+   * förenklade kustlinjen, då tas närmaste land inom 40 km.
+   */
+  P.homeCountry = function (base, item) {
+    if (item._home !== undefined) return item._home;
+    var home = P.countryAt(base, item.pos);
+    if (!home) {
+      var best = 40;
+      countryIndex(base).list.forEach(function (c) {
+        var b = c.b;
+        if (item.pos[1] < b[0][1] - 1 || item.pos[1] > b[1][1] + 1) return;
+        var d = P.distanceToItem(item.pos, { pos: item.pos, shape: c.f.geometry }).km;
+        if (d < best) { best = d; home = c.f; }
+      });
+    }
+    item._home = home || null;
+    return item._home;
+  };
+  P.isCityType = function (item) {
+    return item.type === "capital" || item.type === "city";
+  };
+
   P.TYPE_NAMES = {
     country: "land",
     capital: "huvudstad",

@@ -496,7 +496,8 @@
         '<div class="progress small muted">Fråga ' + (idx + 1) + " av " + queue.length + " · Poäng: " + points + "</div>" +
         '<div class="prompt"><div class="muted small">Var ligger…</div><div class="target-name">' + P.esc(it.name) + "</div>" +
         '<div class="muted small">' + P.esc(it.hint || P.TYPE_NAMES[it.type] || "") + "</div></div>" +
-        '<p class="instr">Tryck på kartan. Rätt om du är inom ' + R + " km. Zooma med två fingrar eller +/−.</p>" +
+        '<p class="instr">Tryck på kartan. Rätt om du är inom ' + R + " km" + (P.isCityType(it) ? " och i rätt land" : "") +
+        ". Zooma med två fingrar eller +/−.</p>" +
         '<div id="feedback"></div>';
     }
 
@@ -507,17 +508,36 @@
       var d = P.distanceToItem(ll, it);
       var ok = d.km <= R;
       var pts = ok ? 100 : Math.max(0, Math.round(100 * (1 - (d.km - R) / (4 * R))));
+      // Städer: trycker man i ett annat land blir det fel och 0 poäng, även inom radien
+      var home = null, otherCountry = null;
+      if (P.isCityType(it)) {
+        home = P.homeCountry(base, it);
+        var at = P.countryAt(base, ll);
+        if (home && at && at !== home) {
+          otherCountry = at;
+          ok = false;
+          pts = 0;
+        }
+      }
       points += pts;
       if (ok) correctCount++; else wrong.push(it.id);
       P.store.record(list.id, it.id, ok);
+      if (home) currentMap.showShape({ id: "__home", shape: home.geometry }, ok ? "correct country" : "wrong country");
       currentMap.showShape(it, ok ? "correct" : "wrong");
       currentMap.showPin(ll, ok ? "guess ok" : "guess bad");
       if (d.km > 0) currentMap.showLine(ll, d.nearest, ok ? "ok" : "bad");
       var km = d.km < 1 ? "pricken mitt i" : Math.round(d.km) + " km bort";
       var last = idx === queue.length - 1;
+      var msg;
+      if (otherCountry) {
+        msg = "Du tryckte i " + P.esc(otherCountry.properties.n) + ", men " + P.esc(it.name) + " ligger i " +
+          P.esc(home.properties.n) + ". Du var " + km + ".";
+      } else {
+        msg = d.km < 1 ? "Mitt i prick! 🎯" : "Du var " + km + ".";
+      }
       $("#feedback").innerHTML =
         '<div class="fb-box ' + (ok ? "ok" : "bad") + '"><b>' + (ok ? "Rätt! " : "Inte riktigt. ") + "</b>" +
-        (d.km < 1 ? "Mitt i prick! 🎯" : "Du var " + km + ".") + " <span class='muted'>+" + pts + " poäng</span></div>" +
+        msg + " <span class='muted'>+" + pts + " poäng</span></div>" +
         '<button class="btn primary big-btn" id="next" type="button">' + (last ? "Visa resultat" : "Nästa") + "</button>";
       var next = $("#next");
       next.onclick = function () {

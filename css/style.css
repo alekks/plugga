@@ -196,6 +196,7 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 8px; }
 .map .shape.correct.line { stroke: var(--good); }
 .map .shape.wrong.area { fill: var(--bad); fill-opacity: .3; stroke: var(--bad); }
 .map .shape.wrong.line { stroke: var(--bad); }
+.map .shape.area.country { fill-opacity: .12; stroke-width: 2; stroke-dasharray: 6 4; }
 .map .answer-line { fill: none; stroke: #333; stroke-width: 2; stroke-dasharray: 6 5; }
 
 .map .pt .halo { fill: none; stroke-width: 3; }
