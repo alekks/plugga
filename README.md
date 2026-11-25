@@ -37,6 +37,27 @@ python3 -m http.server 8000
 Man väljer vilka grupper som ska ingå (t.ex. bara huvudstäder). Man kan också blanda
 numren, så att man inte bara lär sig provpapprets nummer utantill.
 
+## Poäng, prestationer och världar
+
+För att få barnen att tänka efter i stället för att gissa snabbt:
+
+| | Poäng |
+|---|---|
+| Rätt i Hitta på kartan | +100, plus +20 per rätt i rad (svit, högst +100) |
+| Fel | −100, och sviten nollställs |
+| Fel och snabbt (svar inom 4 sekunder) | −250 ("Förhastat!") |
+| Sätt ut numren / Skriv namnen | +50 per rätt, −50 per fel, dubbelt avdrag om man rättar förhastat (under 3 s per plats) |
+
+- I Hitta på kartan sätter man först ut en nål, som går att flytta, och trycker sedan **Svara**. Det skyddar mot felklick.
+- Saldot kan bli negativt. Köpta saker och uppnådda prestationer kan man aldrig förlora.
+- **Prestationer** kan fås många gånger och går i nivåer: Lera → Trä → Sten → Brons → Silver → Guld → Diamant
+  (vid 1, 3, 10, 25, 50, 100 och 250 gånger). Varje nivå ger bonuspoäng, en medalj och klossar. Från Sten ingår också en sak,
+  och på Guld och Diamant en exklusiv sak som inte finns i butiken.
+- **Världar:** tio teman (Anime, Bilar, Flygplan, Smink, Mat, Dryck, Godis, Snacks, Spel, Memes). Den första är gratis,
+  sedan kostar varje ny värld 2 500 poäng. Man köper klossar och saker och bygger på ett rutnät.
+
+Alla värden står överst i `js/game.js` (`G.RULES`, `G.TIERS`, `G.TIER_REWARDS`) och går lätt att justera.
+
 ## Statistik
 
 Resultaten sparas i webbläsaren på varje enhet, en profil per barn. Statistiksidan visar

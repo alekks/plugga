@@ -75,11 +75,21 @@
   function updateProfileButton() {
     var p = P.store.profile();
     $("#profile-btn").textContent = "👤 " + (p ? p.name : "Vem övar?");
+    if (P.game) P.game.renderBadge();
   }
+
+  var resizeFns = [];
+  window.addEventListener("resize", function () { resizeFns.forEach(function (f) { f(); }); });
+  var gameCtx = {
+    main: main,
+    setCrumb: function (p) { setCrumb(p); },
+    onResize: function (f) { resizeFns.push(f); },
+  };
 
   function teardown() {
     if (currentMap) currentMap.destroy();
     currentMap = null;
+    resizeFns = [];
     document.body.classList.remove("playing");
     document.onkeydown = null;
   }
@@ -124,6 +134,11 @@
     });
     var p = P.store.profile();
     var html = '<section class="hero"><h1>' + (p ? "Hej " + P.esc(p.name) + "! " : "") + "Vad vill du öva på?</h1></section>";
+    var gs = P.game.state();
+    html += '<div class="cards game-cards"><a class="card list-card game-card" href="#/varldar"><h3>🧱 Mina världar</h3>' +
+      '<p class="muted">' + (Object.keys(gs.worlds).length ? "Bygg vidare med dina poäng" : "Välj din första värld – gratis!") + "</p>" +
+      '<p class="big-points small-big' + (gs.points < 0 ? " neg" : "") + '">⭐ ' + P.game.fmt(gs.points) + " poäng</p></a>" +
+      '<a class="card list-card game-card" href="#/prestationer"><h3>🏆 Prestationer</h3><p class="muted">Lera, trä, sten … ända upp till diamant</p></a></div>';
     order.forEach(function (key) {
       html += '<h2 class="section-title">' + P.esc(key) + '</h2><div class="cards">';
       groups[key].forEach(function (l) {
@@ -278,13 +293,17 @@
     };
   }
 
-  function finishBox(score, total, items, wrongIds, list, mode, q) {
+  function finishBox(score, total, items, wrongIds, list, mode, q, roundPoints) {
     var ratio = total ? score / total : 0;
     var msg = ratio === 1 ? "Alla rätt! 🌟" : ratio >= 0.8 ? "Riktigt bra! 👏" : ratio >= 0.5 ? "Bra kämpat! 💪" : "Fortsätt öva, det blir bättre! 🙂";
     var wrong = items.filter(function (it) { return wrongIds.indexOf(it.id) >= 0; });
     var again = "#/ova/" + encodeURIComponent(list.id) + "/" + mode + "?" +
       Object.keys(q).map(function (k) { return k + "=" + encodeURIComponent(q[k]); }).join("&");
     var html = '<div class="result-box"><div class="big">' + score + " / " + total + "</div><p>" + msg + "</p>";
+    if (roundPoints != null) {
+      html += '<p class="round-points ' + (roundPoints < 0 ? "neg" : "pos") + '">' + P.game.fmtDelta(roundPoints) + " poäng</p>" +
+        '<p class="small muted">Du har nu ⭐ ' + P.game.fmt(P.game.state().points) + ' poäng · <a href="#/varldar">Bygg i dina världar</a></p>';
+    }
     if (wrong.length) {
       html += '<p class="small">Öva mer på:</p><div class="chips">' +
         wrong.map(function (it) { return '<span class="chip bad">' + P.esc(it.name) + "</span>"; }).join("") + "</div>";
@@ -316,6 +335,8 @@
         if (selectedMarker && finePointer()) { var inp = $("#typed"); if (inp) inp.focus(); }
       },
     });
+    var startedAt = Date.now();
+    var weakBefore = weakIdSet(list);
     var markerItems = P.shuffle(items); // ordning på kartan avslöjar inget
     currentMap.setMarkers(markerItems.map(function (it) { return markerFor(it, "", ""); }));
 
@@ -374,13 +395,17 @@
       if (Object.keys(answers).length < items.length &&
           !confirm("Du har inte fyllt i alla. Vill du rätta ändå?")) return;
       checked = true;
-      var score = 0, wrong = [];
+      var score = 0, wrong = [], comebacks = 0;
       items.forEach(function (it) {
         var ok = answers[it.id] === it.show;
         if (ok) score++; else wrong.push(it.id);
+        if (ok && weakBefore[it.id]) comebacks++;
         P.store.record(list.id, it.id, ok);
       });
       P.store.session(list.id, "placera", score, items.length);
+      var gr = P.game.onCheck({ correct: score, total: items.length, ms: Date.now() - startedAt, comebacks: comebacks });
+      P.game.showEvents(gr.events);
+      roundDone(list, items.length, wrong.length);
       currentMap.updateAll(function (m) {
         var it = items.filter(function (x) { return x.id === m.id; })[0];
         var ok = answers[m.id] === it.show;
@@ -392,7 +417,8 @@
         li.className = wrong.indexOf(it.id) >= 0 ? "wrong" : "correct";
       });
       $("#check", panel).disabled = true;
-      $("#result", panel).innerHTML = '<p class="small">Röda ringar visar rätt nummer där du hade fel.</p>' + finishBox(score, items.length, items, wrong, list, "placera", q);
+      $("#result", panel).innerHTML = (gr.rushed ? rushedNote(true) : "") +
+        '<p class="small">Röda ringar visar rätt nummer där du hade fel.</p>' + finishBox(score, items.length, items, wrong, list, "placera", q, gr.delta);
       $("#result", panel).scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
 
@@ -405,6 +431,8 @@
     if (!items.length) return emptyPlay(list);
     var panel = playLayout(list, "skriv");
     var checked = false;
+    var startedAt = Date.now();
+    var weakBefore = weakIdSet(list);
 
     currentMap = new P.MapView($("#map"), base, {
       view: list.view, style: list.style,
@@ -443,7 +471,7 @@
       var empty = inputs.filter(function (x) { return !x.value.trim(); }).length;
       if (empty && !confirm(empty + " rutor är tomma. Vill du rätta ändå?")) return;
       checked = true;
-      var score = 0, wrong = [];
+      var score = 0, wrong = [], comebacks = 0;
       currentMap.clearShapes();
       inputs.forEach(function (inp) {
         var it = items.filter(function (x) { return x.id === inp.getAttribute("data-id"); })[0];
@@ -457,15 +485,25 @@
         else if (res === "close") fb.innerHTML = "✓ <small>stavas " + P.esc(it.name) + "</small>";
         else fb.innerHTML = "✗ <small>" + P.esc(it.name) + "</small>";
         if (ok) score++; else wrong.push(it.id);
+        if (ok && weakBefore[it.id]) comebacks++;
         P.store.record(list.id, it.id, ok);
         currentMap.updateMarker(it.id, { cls: ok ? "correct" : "wrong" });
       });
       P.store.session(list.id, "skriv", score, items.length);
+      var gr = P.game.onCheck({ correct: score, total: items.length, ms: Date.now() - startedAt, comebacks: comebacks });
+      P.game.showEvents(gr.events);
+      roundDone(list, items.length, wrong.length);
       this.disabled = true;
-      $("#result", panel).innerHTML = finishBox(score, items.length, items, wrong, list, "skriv", q);
+      $("#result", panel).innerHTML = (gr.rushed ? rushedNote(true) : "") + finishBox(score, items.length, items, wrong, list, "skriv", q, gr.delta);
       $("#result", panel).scrollIntoView({ behavior: "smooth", block: "nearest" });
     };
     if (finePointer() && inputs[0]) inputs[0].focus();
+  }
+
+  function rushedNote(round) {
+    return '<div class="fb-box bad rushed">⏱️ <b>Förhastat!</b> ' +
+      (round ? "Du rättade väldigt snabbt och hade fel, så felen kostade dubbelt. " : "") +
+      "Ta det lugnt och tänk efter – det lönar sig.</div>";
   }
 
   /* ---------- Övning 3: hitta på kartan ---------- */
@@ -480,48 +518,65 @@
       var res = P.store.results(list.id);
       queue.sort(function (a, b) { return (P.mastery(res[a.id]) || 0) - (P.mastery(res[b.id]) || 0); });
     }
-    var idx = 0, answered = false, correctCount = 0, points = 0, wrong = [];
+    var weakBefore = weakIdSet(list);
+    var idx = 0, answered = false, correctCount = 0, roundPoints = 0, wrong = [];
+    var pending = null, shownAt = 0;
 
     currentMap = new P.MapView($("#map"), base, {
       view: list.view, style: list.style, noDblZoom: true,
-      onClick: function (ll) { answer(ll); },
+      onClick: function (ll) { placePin(ll); },
     });
 
     function show() {
       answered = false;
+      pending = null;
       currentMap.clearShapes();
       currentMap.clearPins();
       var it = queue[idx];
+      var streak = P.game.state().streak;
       panel.innerHTML =
-        '<div class="progress small muted">Fråga ' + (idx + 1) + " av " + queue.length + " · Poäng: " + points + "</div>" +
+        '<div class="progress small muted">Fråga ' + (idx + 1) + " av " + queue.length + " · Omgången: " + P.game.fmtDelta(roundPoints) + " poäng" +
+        (streak >= 2 ? ' · <span class="streak">🔥 ' + streak + " i rad</span>" : "") + "</div>" +
         '<div class="prompt"><div class="muted small">Var ligger…</div><div class="target-name">' + P.esc(it.name) + "</div>" +
         '<div class="muted small">' + P.esc(it.hint || P.TYPE_NAMES[it.type] || "") + "</div></div>" +
-        '<p class="instr">Tryck på kartan. Rätt om du är inom ' + R + " km" + (P.isCityType(it) ? " och i rätt land" : "") +
-        ". Zooma med två fingrar eller +/−.</p>" +
+        '<p class="instr">Tryck på kartan för att sätta ut en nål. Du kan flytta den. Tryck sedan <b>Svara</b>. Rätt om du är inom ' + R + " km" +
+        (P.isCityType(it) ? " och i rätt land" : "") + ".</p>" +
+        '<button class="btn primary big-btn" id="svara" type="button" disabled>Svara</button>' +
         '<div id="feedback"></div>';
+      $("#svara").onclick = function () { if (pending) answer(pending); };
+      shownAt = Date.now();
+    }
+
+    function placePin(ll) {
+      if (answered) return;
+      pending = ll;
+      currentMap.clearPins();
+      currentMap.showPin(ll, "guess pending");
+      var b = $("#svara");
+      if (b) b.disabled = false;
     }
 
     function answer(ll) {
       if (answered) return;
       answered = true;
+      var ms = Date.now() - shownAt;
       var it = queue[idx];
       var d = P.distanceToItem(ll, it);
       var ok = d.km <= R;
-      var pts = ok ? 100 : Math.max(0, Math.round(100 * (1 - (d.km - R) / (4 * R))));
-      // Städer: trycker man i ett annat land blir det fel och 0 poäng, även inom radien
+      // Städer: trycker man i ett annat land blir det fel, även inom radien
       var home = null, otherCountry = null;
       if (P.isCityType(it)) {
         home = P.homeCountry(base, it);
         var at = P.countryAt(base, ll);
-        if (home && at && at !== home) {
-          otherCountry = at;
-          ok = false;
-          pts = 0;
-        }
+        if (home && at && at !== home) { otherCountry = at; ok = false; }
       }
-      points += pts;
       if (ok) correctCount++; else wrong.push(it.id);
       P.store.record(list.id, it.id, ok);
+      var pinpoint = ok && d.km < 10 && (!it.shape || /Line/.test(it.shape.type));
+      var gr = P.game.onHitta({ ok: ok, ms: ms, pinpoint: pinpoint, wasWeak: !!weakBefore[it.id] });
+      roundPoints += gr.delta;
+
+      currentMap.clearPins();
       if (home) currentMap.showShape({ id: "__home", shape: home.geometry }, ok ? "correct country" : "wrong country");
       currentMap.showShape(it, ok ? "correct" : "wrong");
       currentMap.showPin(ll, ok ? "guess ok" : "guess bad");
@@ -535,10 +590,15 @@
       } else {
         msg = d.km < 1 ? "Mitt i prick! 🎯" : "Du var " + km + ".";
       }
+      var pts = '<div class="pts ' + (gr.delta < 0 ? "neg" : "pos") + '">' + P.game.fmtDelta(gr.delta) + " poäng" +
+        (gr.bonus ? ' <small>(varav ' + P.game.fmtDelta(gr.bonus) + " för 🔥 svit)</small>" : "") + "</div>";
+      var sv = $("#svara");
+      if (sv) sv.remove();
       $("#feedback").innerHTML =
-        '<div class="fb-box ' + (ok ? "ok" : "bad") + '"><b>' + (ok ? "Rätt! " : "Inte riktigt. ") + "</b>" +
-        msg + " <span class='muted'>+" + pts + " poäng</span></div>" +
+        (gr.rushed ? rushedNote(false) : "") +
+        '<div class="fb-box ' + (ok ? "ok" : "bad") + '"><b>' + (ok ? "Rätt! " : "Inte riktigt. ") + "</b>" + msg + pts + "</div>" +
         '<button class="btn primary big-btn" id="next" type="button">' + (last ? "Visa resultat" : "Nästa") + "</button>";
+      P.game.showEvents(gr.events);
       var next = $("#next");
       next.onclick = function () {
         if (last) return finish();
@@ -553,15 +613,29 @@
       currentMap.clearShapes();
       currentMap.clearPins();
       wrong.forEach(function (id) { currentMap.showShape(itemById(list, id), "wrong"); });
-      panel.innerHTML = '<div class="progress small muted">Poäng: ' + points + " av " + queue.length * 100 + "</div>" +
-        finishBox(correctCount, queue.length, queue, wrong, list, "hitta", q) +
+      roundDone(list, queue.length, wrong.length);
+      panel.innerHTML = finishBox(correctCount, queue.length, queue, wrong, list, "hitta", q, roundPoints) +
         (wrong.length ? '<p class="small muted">De röda på kartan är de du missade.</p>' : "");
     }
 
     document.onkeydown = function (e) {
-      if (e.key === "Enter" && answered) { var n = $("#next"); if (n) n.click(); }
+      if (e.key !== "Enter") return;
+      if (answered) { var n = $("#next"); if (n) n.click(); }
+      else if (pending) answer(pending);
     };
     show();
+  }
+
+  /** Anropas när en omgång är klar: achievements för omgången. */
+  function roundDone(list, total, wrongCount) {
+    var pr = listProgress(list);
+    var r = P.game.onRound({ listId: list.id, total: total, wrong: wrongCount, mastered: pr.good === pr.total });
+    P.game.showEvents(r.events);
+  }
+  function weakIdSet(list) {
+    var set = {};
+    weakItems(list).forEach(function (x) { set[x.item.id] = true; });
+    return set;
   }
 
   function emptyPlay(list) {
@@ -651,6 +725,9 @@
     if (!p.length) return viewHome();
     if (p[0] === "lista" && p[1]) return viewList(p[1]);
     if (p[0] === "statistik") return viewStats();
+    if (p[0] === "varldar") return P.game.viewWorlds(gameCtx);
+    if (p[0] === "varld" && p[1]) return P.game.viewWorld(gameCtx, p[1]);
+    if (p[0] === "prestationer") return P.game.viewAchievements(gameCtx);
     if (p[0] === "ova" && p[1] && p[2]) {
       var list = findList(p[1]);
       if (!list) return viewNotFound();
@@ -668,6 +745,7 @@
         lists = r[0];
         base = r[1];
         updateProfileButton();
+        P.game.renderBadge();
         $("#profile-btn").onclick = function () { go("#/statistik"); };
         window.addEventListener("hashchange", route);
         route();
